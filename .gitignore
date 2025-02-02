@@ -4,6 +4,7 @@
 *.dll
 *.so
 *.dylib
+go-chip8
 
 # Output of the go coverage tool
 *.out

@@ -17,11 +17,12 @@ type Sys struct {
 
 	ram   [4096]uint8
 	stack [16]uint16
-	gfx   [64 * 32]uint8
+	gfx   [64 * 32]uint8 // x*y may change
 	keys  [16]uint8
 
 	// Additional
-	sop, eop uint16
+	sop, eop     uint16
+	gfx_x, gfx_y uint8
 }
 
 // Eventually add the start of program adress as a parameter to increase compatibility
@@ -29,6 +30,27 @@ func InitSys() *Sys {
 	s := new(Sys)
 	s.pc = 512
 	s.sop = 512
+
+	sprites := []uint8{
+		0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
+		0x20, 0x60, 0x20, 0x20, 0x70, // 1
+		0xF0, 0x10, 0xF0, 0x80, 0xF0, // 2
+		0xF0, 0x10, 0xF0, 0x10, 0xF0, // 3
+		0x90, 0x90, 0xF0, 0x10, 0x10, // 4
+		0xF0, 0x80, 0xF0, 0x10, 0xF0, // 5
+		0xF0, 0x80, 0xF0, 0x90, 0xF0, // 6
+		0xF0, 0x10, 0x20, 0x40, 0x40, // 7
+		0xF0, 0x90, 0xF0, 0x90, 0xF0, // 8
+		0xF0, 0x90, 0xF0, 0x10, 0xF0, // 9
+		0xF0, 0x90, 0xF0, 0x90, 0x90, // A
+		0xE0, 0x90, 0xE0, 0x90, 0xE0, // B
+		0xF0, 0x80, 0x80, 0x80, 0xF0, // C
+		0xE0, 0x90, 0x90, 0x90, 0xE0, // D
+		0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
+		0xF0, 0x80, 0xF0, 0x80, 0x80} // F
+
+	fmt.Println(sprites)
+
 	return s
 }
 
@@ -101,7 +123,7 @@ func (s *Sys) execute(instr uint16) {
 
 	nnn := instr & 0x0FFF
 	kk := uint8(instr & 0x00FF)
-	// n := instr & 0x000F
+	n := instr & 0x000F
 
 	x := instr & 0x0F00 >> 8 // redundant
 	y := instr & 0x00F0 >> 8 // redundant
@@ -167,19 +189,18 @@ func (s *Sys) execute(instr uint16) {
 		}
 		s.vn[x] /= 2
 	case d1 == 0x8 && d4 == 0x7: // vx = vy - vx, vf = not borrow
+		s.vn[x] = s.vn[y] - s.vn[x]
 		if s.vn[y] > s.vn[x] {
 			s.vn[15] = 1
-			// do we still subtract? YES
 		} else {
 			s.vn[15] = 0
-			s.vn[x] = s.vn[y] - s.vn[x]
 		}
 	case d1 == 0x8 && d4 == 0xE: // vx = vx shl 1
+		s.vn[x] *= 2
 		if s.vn[x]&(1<<7) == 1 {
 			s.vn[15] = 1
 		} else {
 			s.vn[15] = 0
-			s.vn[x] *= 2
 		}
 	case d1 == 0x9:
 		if s.vn[x] != s.vn[y] {
@@ -191,12 +212,32 @@ func (s *Sys) execute(instr uint16) {
 		s.pc = nnn + uint16(s.vn[0])
 	case d1 == 0xc:
 		s.vn[x] = uint8(rand.Intn(255)) & kk
-	case d1 == 0xd:
-		// implement display functionality here first
+	case d1 == 0xd: // copy n bytes from ram[I] to vx,vy; wrap
+
+		gfxPos := s.vn[y]*s.gfx_x + s.vn[x]
+
+		s.vn[15] = 0
+		for j := s.i; j <= s.i+n; j++ {
+			if s.ram[j] != 0 {
+				s.vn[15] = 1
+			}
+			s.gfx[gfxPos] ^= s.ram[j]
+			gfxPos++
+
+		}
+
 	case d1 == 0xe && d4 == 0xe:
-	case d1 == 0xe && d4 == 0x1:
-	case d1 == 0xf && d4 == 0x7:
+		if s.keys[s.vn[x]] == 1 {
+			s.pc += 2
+		}
+	case d1 == 0xe && d4 == 0x1: // change
+		if s.keys[s.vn[x]] == 0 {
+			s.pc += 2
+		}
+	case d1 == 0xf && d4 == 0x7: // change
+		s.vn[x] = s.dt
 	case d1 == 0xf && d4 == 0xa:
+		// read from standard in here or something
 	case d1 == 0xf && d3 == 0x1 && d4 == 0x5:
 	case d1 == 0xf && d4 == 0x8:
 	case d1 == 0xf && d4 == 0xe:
@@ -218,12 +259,10 @@ func decode(instr uint16) string {
 
 	nnn := instr & 0x0FFF
 	kk := instr & 0x00FF
-	// n = instr & 0x000F
+	n := instr & 0x000F
 
 	x := instr & 0x0F00 >> 8 // redundant
 	y := instr & 0x00F0 >> 8 // redundant
-
-	// var temp uint16
 
 	switch {
 
@@ -272,7 +311,7 @@ func decode(instr uint16) string {
 	case d1 == 0xc:
 		assm = fmt.Sprintf("RND V%d, %#02x", x, kk)
 	case d1 == 0xd:
-		assm = fmt.Sprintf("SHL V%d", x)
+		assm = fmt.Sprintf("DRW V%d, V%d, ", x, y, n)
 	case d1 == 0xe && d4 == 0xe:
 		assm = fmt.Sprintf("SKP V%d", x)
 	case d1 == 0xe && d4 == 0x1:
