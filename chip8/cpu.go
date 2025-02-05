@@ -2,44 +2,64 @@ package chip8
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
-	"os"
+	"time"
 	// "math/bits"
 )
+
+// shouldn't break things
+const width = 64
+const height = 32
+const pixels = width * height
+
+// May break things
+const ram = 4096
+const stack = 16
+const keys = 16
+const reg = 16
+
+const pcInit = 512
 
 type Sys struct {
 
 	// CHIP8 Spec
-	vn         [16]uint8
+	vn         [reg]uint8
 	i, pc      uint16
 	sp, dt, st uint8
 
-	ram   [4096]uint8
-	stack [16]uint16
-	gfx   [64 * 32]uint8
-	keys  [16]uint8
+	ram   [ram]uint8
+	stack [stack]uint16
+	gfx   [pixels]uint8
+	keys  [keys]uint8
+
+	// Channels
+
+	Height uint8
+	Width  uint8
+
+	GFXCh chan [pixels]uint8
+	KeyCh chan [keys]uint8
 
 	// Additional
 	sop, eop uint16
+
+	tick *time.Ticker
 }
 
 // Eventually add the start of program adress as a parameter to increase compatibility
 func InitSys() *Sys {
 	s := new(Sys)
-	s.pc = 512
-	s.sop = 512
+	s.pc = pcInit
+	s.sop = pcInit
+
+	s.GFXCh = make(chan [pixels]uint8)
+	s.KeyCh = make(chan [keys]uint8)
+
+	s.Height = height
+	s.Width = width
 	return s
-}
-
-func (s *Sys) Dump() {
-	fmt.Println("Vn: ", s.vn)
-	fmt.Println("I: ", s.i)
-	fmt.Println("PC: ", s.pc)
-	fmt.Println("SP: ", s.sp)
-	fmt.Println("Memory")
-	fmt.Println(s.ram)
-
 }
 
 // Returns readable assembly from start of program to end of program
@@ -60,25 +80,20 @@ func (s *Sys) Disasm() []string {
 
 }
 
-func (s *Sys) PrintNext() {
+// Load the ROM into system memory
+func (s *Sys) LoadRom(r io.Reader) {
 
-	var instr uint16 = uint16(s.ram[s.pc])<<8 | uint16(s.ram[s.pc+1])
-
-	fmt.Printf("%#04x\n", instr)
-	decode(instr)
-
-	s.pc += 2
-}
-
-func (s *Sys) LoadRom(rom string) {
-
-	data, err := os.ReadFile(rom)
+	data, err := io.ReadAll(r)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 
 	if len(data) > len(s.ram)-int(s.sop) {
-		log.Fatal("Rom too big")
+		log.Println("ROM too big")
+	}
+
+	if len(data) == 0 {
+		log.Println("Load attempt of zero-length ROM")
 	}
 
 	n := copy(s.ram[s.sop:], data)
@@ -87,13 +102,53 @@ func (s *Sys) LoadRom(rom string) {
 
 }
 
+// Execute a single clock cycle
 func (s *Sys) Step() {
-	// fetch opcode
-	// decode opcode
-	// execute opcode
+	instr := uint16(s.ram[s.pc])<<8 | uint16(s.ram[s.pc])
+	s.execute(instr)
 }
 
+// Run indefinetly
+func (s *Sys) Run() {
+	s.tick = time.NewTicker(16 * time.Millisecond)
+	go s.keysDaemon()
+
+	go func() {
+		for {
+
+			instr := uint16(s.ram[s.pc])<<8 | uint16(s.ram[s.pc])
+			s.execute(instr)
+
+			s.GFXCh <- s.gfx
+
+			<-s.tick.C
+		}
+
+	}()
+
+}
+
+// Halt system
+func (s *Sys) Halt() {
+	s.tick.Stop()
+}
+
+func (s *Sys) Close() {
+	close(s.GFXCh)
+	close(s.KeyCh)
+}
+
+func (s *Sys) keysDaemon() {
+	for {
+		s.keys = <-s.KeyCh
+	}
+}
+
+// Executes the provided instruction and increments SP
+// INCOMPLETE
 func (s *Sys) execute(instr uint16) {
+	ret := true
+
 	d1 := instr & 0xF000 >> 12
 	// d2 := instr & 0x0F00 >> 8
 	d3 := instr & 0x00F0 >> 4
@@ -115,11 +170,14 @@ func (s *Sys) execute(instr uint16) {
 	case instr == 0x00EE: // returns from subroutine
 		s.pc = s.stack[s.sp]
 		s.sp--
+		ret = false
 	case d1 == 0x1: // jump to addr nnn
 		s.pc = nnn
+		ret = false
 	case d1 == 0x2: // call addr nnn
 		s.sp++
 		s.stack[s.sp] = nnn
+		ret = false
 	case d1 == 0x3: // Skip next if Vx = kk
 		if s.vn[x] == kk {
 			s.pc += 2
@@ -206,8 +264,13 @@ func (s *Sys) execute(instr uint16) {
 	case d1 == 0xf && d3 == 0x6 && d4 == 0x5:
 	default:
 	}
+
+	if ret {
+		s.pc += 2
+	}
 }
 
+// Returns a readable assembly
 func decode(instr uint16) string {
 	assm := ""
 
