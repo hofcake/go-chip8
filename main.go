@@ -47,11 +47,6 @@ func (p *prog) buildUI() {
 	romScroll := container.NewVScroll(romContainer)
 
 	// control panel
-	/*
-		romBtn := widget.NewButton("Load Rom", func() {
-			displayRom(romContainer)
-		})*/
-
 	romBtn := widget.NewButton("Load Rom", func() {
 		romContainer.Objects = nil
 		out := p.cpu.Disasm()
@@ -63,6 +58,8 @@ func (p *prog) buildUI() {
 		}
 		romContainer.Refresh()
 	})
+
+	runBtn := widget.NewButton("Run Emulator", func() { p.cpu.Run() })
 
 	// File Dialog
 	openFile := widget.NewButton("Load Rom (.ch8)", func() {
@@ -77,7 +74,9 @@ func (p *prog) buildUI() {
 		fd.Show()
 	})
 
-	content := container.New(layout.NewHBoxLayout(), romBtn, openFile, romScroll)
+	bPanel := container.New(layout.NewGridLayout(2), romBtn, runBtn, openFile)
+
+	content := container.New(layout.NewHBoxLayout(), bPanel, romScroll)
 
 	p.w.SetContent(content)
 }

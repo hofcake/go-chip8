@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"sync"
 	"time"
 	// "math/bits"
 )
@@ -32,7 +33,7 @@ type Sys struct {
 	ram   [ram]uint8
 	stack [stack]uint16
 	gfx   [pixels]uint8
-	keys  [keys]uint8
+	keys  [keys]bool
 
 	// Channels
 
@@ -40,10 +41,12 @@ type Sys struct {
 	Width  uint8
 
 	GFXCh chan [pixels]uint8
-	KeyCh chan [keys]uint8
+	KeyCh chan [keys]bool
 
 	// Additional
 	sop, eop uint16
+	kp       chan uint8
+	mu       sync.Mutex
 
 	tick *time.Ticker
 }
@@ -55,7 +58,7 @@ func InitSys() *Sys {
 	s.sop = pcInit
 
 	s.GFXCh = make(chan [pixels]uint8)
-	s.KeyCh = make(chan [keys]uint8)
+	s.KeyCh = make(chan [keys]bool)
 
 	s.Height = height
 	s.Width = width
@@ -138,9 +141,28 @@ func (s *Sys) Close() {
 	close(s.KeyCh)
 }
 
+// probably have a race condition here
 func (s *Sys) keysDaemon() {
+	nki := uint8(0)
+
 	for {
-		s.keys = <-s.KeyCh
+		in := <-s.KeyCh
+		found := false
+		// identify first new key depression
+		for i := range in {
+			if in[i] == true && !s.keys[i] {
+				found = true
+				nki = uint8(i)
+				break
+			}
+		}
+
+		s.keys = in
+
+		if found {
+			s.kp <- nki
+		}
+
 	}
 }
 
@@ -250,18 +272,43 @@ func (s *Sys) execute(instr uint16) {
 	case d1 == 0xc:
 		s.vn[x] = uint8(rand.Intn(255)) & kk
 	case d1 == 0xd:
-		// implement display functionality here first
+		// tbd: implement display functionality here first
 	case d1 == 0xe && d4 == 0xe:
+		vxVal := s.vn[x]
+		if vxVal > uint8(keys) {
+			log.Printf("SKP Vx called with V%d of %d (>keys)\n", x, vxVal)
+		}
+		if s.keys[vxVal] {
+			s.pc += 2
+		}
 	case d1 == 0xe && d4 == 0x1:
+		vxVal := s.vn[x]
+		if vxVal > uint8(keys) {
+			log.Printf("SKP Vx called with V%d of %d (>keys)\n", x, vxVal)
+		}
+		if !s.keys[vxVal] {
+			s.pc += 2
+		}
 	case d1 == 0xf && d4 == 0x7:
-	case d1 == 0xf && d4 == 0xa:
+		s.vn[x] = s.dt
+	case d1 == 0xf && d4 == 0xa: // waiting for key daemon
+		key := <-s.kp
+		s.vn[x] = key
+
 	case d1 == 0xf && d3 == 0x1 && d4 == 0x5:
+		s.dt = s.vn[x]
 	case d1 == 0xf && d4 == 0x8:
+		s.st = s.vn[x]
 	case d1 == 0xf && d4 == 0xe:
+		s.i += uint16(s.vn[x])
 	case d1 == 0xf && d4 == 0x9:
+		//tbd
 	case d1 == 0xf && d4 == 0x3:
+		//tbd
 	case d1 == 0xf && d3 == 0x5 && d4 == 0x5:
+		//tbd
 	case d1 == 0xf && d3 == 0x6 && d4 == 0x5:
+		//tbd
 	default:
 	}
 
