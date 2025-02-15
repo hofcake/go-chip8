@@ -1,52 +1,82 @@
 package main
 
 import (
+	"log"
+
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
 	"github.com/hofcake/go-chip8/chip8"
 )
 
+type prog struct {
+	cpu *chip8.Sys
+	a   fyne.App
+	w   fyne.Window
+}
+
+func initProg() *prog {
+	p := new(prog)
+
+	p.cpu = chip8.InitSys()
+	p.a = app.New()
+	p.w = p.a.NewWindow("Go-Chip8 Emulator")
+
+	return p
+
+}
+
 func main() {
 
-	sys := chip8.InitSys()
-	sys.LoadRom("roms/Keypad Test [Hap, 2006].ch8")
+	p := initProg()
+	p.buildUI()
 
-	a := app.New()
-	w := a.NewWindow("Hello World")
-	//w2 := a.NewWindow("Second Window")
+	//prog.w.Show()
+	//prog.a.Run()
+	p.w.ShowAndRun()
 
+}
+
+func (p *prog) buildUI() {
 	// Assembly view
 	romContainer := container.NewVBox()
 	romScroll := container.NewVScroll(romContainer)
 
 	// control panel
 	romBtn := widget.NewButton("Load Rom", func() {
-		displayRom(sys, romContainer)
+		romContainer.Objects = nil
+		out := p.cpu.Disasm()
+
+		for i := range out {
+			//fmt.Println(out[i])
+			romContainer.Objects = append(romContainer.Objects, widget.NewLabel(out[i]))
+
+		}
+		romContainer.Refresh()
 	})
 
-	content := container.New(layout.NewHBoxLayout(), romBtn, layout.NewSpacer(), romScroll)
+	runBtn := widget.NewButton("Run Emulator", func() { p.cpu.Run() })
 
-	w.SetContent(content)
+	// File Dialog
+	openFile := widget.NewButton("Load Rom (.ch8)", func() {
+		fd := dialog.NewFileOpen(
+			func(r fyne.URIReadCloser, err error) {
+				if err != nil {
+					log.Println("Error with file open dialog")
+				}
+				p.cpu.LoadRom(r)
+			}, p.w)
+		fd.SetFilter(storage.NewExtensionFileFilter([]string{".ch8"}))
+		fd.Show()
+	})
 
-	w.Show()
-	//w2.Show()
-	a.Run()
+	bPanel := container.New(layout.NewGridLayout(2), romBtn, runBtn, openFile)
 
-}
+	content := container.New(layout.NewHBoxLayout(), bPanel, romScroll)
 
-func displayRom(s *chip8.Sys, g *fyne.Container) {
-	remRom(g)
-	out := s.Disasm()
-
-	for i := range out {
-		g.Objects = append(g.Objects, widget.NewLabel(out[i]))
-	}
-	g.Refresh()
-}
-
-func remRom(g *fyne.Container) {
-	g.Objects = nil
+	p.w.SetContent(content)
 }
