@@ -311,7 +311,7 @@ func decode(instr uint16) string {
 	case d1 == 0xc:
 		assm = fmt.Sprintf("RND V%d, %#02x", x, kk)
 	case d1 == 0xd:
-		assm = fmt.Sprintf("DRW V%d, V%d, ", x, y, n)
+		assm = fmt.Sprintf("DRW V%d, V%d, %d", x, y, n)
 	case d1 == 0xe && d4 == 0xe:
 		assm = fmt.Sprintf("SKP V%d", x)
 	case d1 == 0xe && d4 == 0x1:
