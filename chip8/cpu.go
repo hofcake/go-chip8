@@ -340,11 +340,32 @@ func (s *Sys) execute(instr uint16) {
 	case d1 == 0xf && d4 == 0x3:
 		// store BCD representation of Vx in memory locations I, I+1, I+2
 
+		vx := s.vn[x]
+
+		h := vx / 100
+		t := vx - (h*100)/10
+		o := vx - (h * 100) - (t * 10)
+		s.ram[s.i] = h
+		s.ram[s.i+1] = t
+		s.ram[s.i+2] = o
+
 	case d1 == 0xf && d3 == 0x5 && d4 == 0x5:
 		// Store registers V0 through Vx in memory starting at location I.
 
+		loc := s.i
+		for i := 0; i < int(s.vn[x]); i++ {
+			s.ram[loc] = s.vn[i]
+			loc++
+		}
+
 	case d1 == 0xf && d3 == 0x6 && d4 == 0x5:
 		// Read registers V0 through Vx from memory starting at location I.
+
+		loc := s.i
+		for i := 0; i < int(s.vn[x]); i++ {
+			s.vn[i] = s.ram[loc]
+			loc++
+		}
 
 	default:
 	}
