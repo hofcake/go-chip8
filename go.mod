@@ -1,6 +1,6 @@
 module github.com/hofcake/go-chip8
 
-go 1.23
+go 1.22.2
 
 require (
 	fyne.io/fyne/v2 v2.5.4 // indirect

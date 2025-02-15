@@ -81,6 +81,8 @@ func InitSys() *Sys {
 		0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
 		0xF0, 0x80, 0xF0, 0x80, 0x80} // F
 
+	copy(s.ram[0:], sprites)
+
 	fmt.Println(sprites)
 
 	return s
@@ -293,7 +295,7 @@ func (s *Sys) execute(instr uint16) {
 		s.vn[x] = uint8(rand.Intn(255)) & kk
 	case d1 == 0xd: // copy n bytes from ram[I] to vx,vy; wrap
 
-		gfxPos := s.vn[y]*s.gfx_x + s.vn[x]
+		gfxPos := s.vn[y]*s.Width + s.vn[x]
 
 		s.vn[15] = 0
 		for j := s.i; j <= s.i+n; j++ {
@@ -334,13 +336,16 @@ func (s *Sys) execute(instr uint16) {
 	case d1 == 0xf && d4 == 0xe:
 		s.i += uint16(s.vn[x])
 	case d1 == 0xf && d4 == 0x9:
-		//tbd
+		s.i = uint16(s.vn[x]) * 5
 	case d1 == 0xf && d4 == 0x3:
-		//tbd
+		// store BCD representation of Vx in memory locations I, I+1, I+2
+
 	case d1 == 0xf && d3 == 0x5 && d4 == 0x5:
-		//tbd
+		// Store registers V0 through Vx in memory starting at location I.
+
 	case d1 == 0xf && d3 == 0x6 && d4 == 0x5:
-		//tbd
+		// Read registers V0 through Vx from memory starting at location I.
+
 	default:
 	}
 
