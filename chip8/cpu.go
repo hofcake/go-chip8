@@ -83,8 +83,6 @@ func InitSys() *Sys {
 
 	copy(s.ram[0:], sprites)
 
-	fmt.Println(sprites)
-
 	return s
 }
 
@@ -173,7 +171,7 @@ func (s *Sys) keysDaemon() {
 		found := false
 		// identify first new key depression
 		for i := range in {
-			if in[i] == true && !s.keys[i] {
+			if in[i] && !s.keys[i] {
 				found = true
 				nki = uint8(i)
 				break
