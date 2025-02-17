@@ -1,10 +1,14 @@
 package main
 
 import (
+	"image/color"
 	"log"
+
+	"image"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -74,9 +78,37 @@ func (p *prog) buildUI() {
 		fd.Show()
 	})
 
+	disp := p.buildDisplay(64, 32)
+
 	bPanel := container.New(layout.NewGridLayout(2), romBtn, runBtn, openFile)
 
-	content := container.New(layout.NewHBoxLayout(), bPanel, romScroll)
+	content := container.New(layout.NewHBoxLayout(), bPanel, disp, romScroll)
 
 	p.w.SetContent(content)
+}
+
+func (p *prog) buildDisplay(h int, w int) fyne.CanvasObject {
+	// NewRaster(generate func(w,h int) image.Image) *Raster
+	// NewImgeFromResource(res fyne.Resource) *Image
+	//
+
+	disp := canvas.NewRasterFromImage((p.frameGen(64, 32)))
+	disp.SetMinSize(fyne.NewSize(64, 32))
+
+	disp.ScaleMode = canvas.ImageScaleFastest
+
+	return disp
+}
+
+func (p *prog) frameGen(w, h int) image.Image {
+	img := image.NewGray(image.Rect(0, 0, w, h))
+
+	for x := 0; x < w; x++ {
+		for y := 0; y < h; y++ {
+			shade := uint8((x ^ y) % 256) // Simple pattern
+			img.SetGray(x, y, color.Gray{Y: shade})
+		}
+	}
+
+	return img
 }
